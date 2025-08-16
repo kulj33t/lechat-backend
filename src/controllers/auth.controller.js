@@ -68,30 +68,32 @@ export const signup = async (req, res) => {
     });
 
     await newUser.save();
-    const mailOptions = {
-      from: `"Chit-Chat Team" <${process.env.EMAIL}>`,
-      to: email,
-      subject: "Welcome to Chit-Chat!",
-      html: `
-        <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
-          <div style="text-align: center; margin-bottom: 20px;">
-            <img 
-              src="https://res.cloudinary.com/dzitsseoz/image/upload/v1733583250/BaatCheet/ldn8ikrtjvbs8suhgz62.png" 
-              alt="Chit-Chat Logo" 
-              style="width: 120px; height: 120px; object-fit:cover; border-radius: 50%;"
-            />
-          </div>
-          <h2 style="color: #444; text-align: center;">Welcome to Chit-Chat, ${newUser.fullName}!</h2>
-          <p>We’re excited to have you as part of our growing community. With Chit-Chat, you can now stay connected with friends, meet new people, and engage in conversations that matter to you.</p>
-          <p>Your account has been successfully created, and you can start chatting right away!</p>
-          <p>If you ever need assistance or have any questions, our team is here to help.</p>
-          <p>We’re looking forward to seeing you around, and we hope you enjoy your time with Chit-Chat.</p>
-          <p>Best regards,<br>Chit-Chat Team</p>
-          <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
-          <p style="font-size: 12px; color: #888; text-align: center;">If you need any assistance, feel free to <a href="mailto:vermadheeraj945@gmail.com" style="color: #007BFF;">contact us</a>.</p>
-        </div>
-      `,
-    };
+
+const mailOptions = {
+  from: `"Le Chat Team" <${process.env.EMAIL}>`,
+  to: email,
+  subject: "Welcome to Le Chat!",
+  html: `
+    <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <img 
+          src="https://res.cloudinary.com/dzveb730l/image/upload/v1755342389/Logo_vvbgar.png" 
+          alt="Le Chat Logo" 
+          style="width: 120px; height: 120px; object-fit:cover; border-radius: 50%;"
+        />
+      </div>
+      <h2 style="color: #444; text-align: center;">Welcome to Le Chat, ${newUser.fullName}!</h2>
+      <p>We’re excited to have you as part of our growing community. With Le Chat, you can now stay connected with friends, meet new people, and engage in conversations that matter to you.</p>
+      <p>Your account has been successfully created, and you can start chatting right away!</p>
+      <p>If you ever need assistance or have any questions, our team is here to help.</p>
+      <p>We’re looking forward to seeing you around, and we hope you enjoy your time with Le Chat.</p>
+      <p>Best regards,<br>Le Chat Team</p>
+      <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
+      <p style="font-size: 12px; color: #888; text-align: center;">If you need any assistance, feel free to <a href="mailto:vermadheeraj945@gmail.com" style="color: #007BFF;">contact us</a>.</p>
+    </div>
+  `,
+};
+
     generateToken(newUser._id, res);
     await transporter.sendMail(mailOptions);
     return res.status(201).json({
@@ -130,45 +132,48 @@ export const login = async (req, res) => {
         .status(400)
         .json({ status: "error", message: "Invalid credentials" });
     }
-    const mailOptions = {
-      from: `"Chit-Chat" <${process.env.EMAIL}>`,
-      to: email,
-      subject: "Login Activity Notification",
-      html: `
-        <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
-          <div style="text-align: center; margin-bottom: 20px;">
-            <img 
-              src="https://res.cloudinary.com/dzitsseoz/image/upload/v1733583250/BaatCheet/ldn8ikrtjvbs8suhgz62.png" 
-              alt="Chit-Chat Logo" 
-              style="width: 120px; height: 120px; object-fit:cover; border-radius: 50%;"
-            />
-          </div>
-          <h2 style="color: #444; text-align: center;">Login Activity Alert</h2>
-          <p>Dear ${user.fullName},</p>
-          <p>We noticed a new login to your Chit-Chat account. If this was you, you can safely ignore this message.</p>
-          <p>If this wasn't you, please secure your account immediately by changing your password using the link below:</p>
-          <div style="text-align: center; margin: 20px 0;">
-            <a 
-              href="${process.env.BASE_URL}" 
-              style="
-                text-decoration: none; 
-                background-color: #007BFF; 
-                color: white; 
-                padding: 12px 24px; 
-                border-radius: 5px; 
-                font-size: 16px;
-                font-weight: bold;
-                display: inline-block;"
-            >
-              Change Password
-            </a>
-          </div>
-          <p>Thank you for being a part of the Chit-Chat community. If you have any concerns, please contact us immediately.</p>
-          <p>Thank you,<br>Chit-Chat Team</p>
-          <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
-           <p style="font-size: 12px; color: #888; text-align: center;">If you need any assistance, feel free to <a href="mailto:vermadheeraj945@gmail.com" style="color: #007BFF;">contact us</a>.</p></div>
-      `,
-    };
+
+const mailOptions = {
+  from: `"Le Chat" <${process.env.EMAIL}>`,
+  to: email,
+  subject: "Login Activity Notification",
+  html: `
+    <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <img 
+          src="https://res.cloudinary.com/dzveb730l/image/upload/v1755342389/Logo_vvbgar.png" 
+          alt="Le Chat Logo" 
+          style="width: 120px; height: 120px; object-fit:cover; border-radius: 50%;"
+        />
+      </div>
+      <h2 style="color: #444; text-align: center;">Login Activity Alert</h2>
+      <p>Dear ${user.fullName},</p>
+      <p>We noticed a new login to your Le Chat account. If this was you, you can safely ignore this message.</p>
+      <p>If this wasn't you, please secure your account immediately by changing your password using the link below:</p>
+      <div style="text-align: center; margin: 20px 0;">
+        <a 
+          href="${process.env.BASE_URL}" 
+          style="
+            text-decoration: none; 
+            background-color: #007BFF; 
+            color: white; 
+            padding: 12px 24px; 
+            border-radius: 5px; 
+            font-size: 16px;
+            font-weight: bold;
+            display: inline-block;"
+        >
+          Change Password
+        </a>
+      </div>
+      <p>Thank you for being a part of the Le Chat community. If you have any concerns, please contact us immediately.</p>
+      <p>Thank you,<br>Le Chat Team</p>
+      <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
+      <p style="font-size: 12px; color: #888; text-align: center;">If you need any assistance, feel free to <a href="mailto:vermadheeraj945@gmail.com" style="color: #007BFF;">contact us</a>.</p>
+    </div>
+  `,
+};
+
 
     generateToken(user._id, res);
     await transporter.sendMail(mailOptions);
@@ -324,39 +329,39 @@ export const sendResetMail = async (req, res) => {
       email
     )}&token=${encodeURIComponent(token)}`;
     const mailOptions = {
-      from: `"Chit-Chat" <${process.env.EMAIL}>`,
-      to: email,
-      subject: "Reset Your Password",
-      html: `
-        <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
-          <div style="text-align: center; margin-bottom: 20px;">
-            <img 
-              src="https://res.cloudinary.com/dzitsseoz/image/upload/v1733583250/BaatCheet/ldn8ikrtjvbs8suhgz62.png" 
-              alt="Chit-Chat Logo" 
-              style="width: 120px; height: 120px; object-fit:cover; border-radius: 50%;"
-            />
-          </div>
-          <h2 style="color: #444; text-align: center;">Password Reset Request</h2>
-          <p>Dear ${user.fullName},</p>
-          <p>We received a request to reset your password for your Chit-Chat account. If you made this request, please click the button below to reset your password:</p>
-          <div style="text-align: center; margin: 20px 0;">
-            <a 
-              href="${resetLink}" 
-              style="
-                text-decoration: none; 
-                background-color: #007BFF; 
-                color: white; 
-                padding: 12px 24px; 
-                border-radius: 5px; 
-                font-size: 16px;
-                font-weight: bold;
-                display: inline-block;"
-            >
-              Reset Password
-            </a>
-          </div>
-          <p>This link will expire in 5 minutes. If you did not request this, please ignore this email. Your account remains secure.</p>
-          <p>Thank you,<br>Chit-Chat Team</p>
+ from: `"Le Chat" <${process.env.EMAIL}>`,
+  to: email,
+  subject: "Reset Your Password",
+  html: `
+    <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <img 
+          src="https://res.cloudinary.com/dzveb730l/image/upload/v1755342389/Logo_vvbgar.png" 
+          alt="Le Chat Logo" 
+          style="width: 120px; height: 120px; object-fit:cover; border-radius: 50%;"
+        />
+      </div>
+      <h2 style="color: #444; text-align: center;">Password Reset Request</h2>
+      <p>Dear ${user.fullName},</p>
+      <p>We received a request to reset your password for your Le Chat account. If you made this request, please click the button below to reset your password:</p>
+      <div style="text-align: center; margin: 20px 0;">
+        <a 
+          href="${resetLink}" 
+          style="
+            text-decoration: none; 
+            background-color: #007BFF; 
+            color: white; 
+            padding: 12px 24px; 
+            border-radius: 5px; 
+            font-size: 16px;
+            font-weight: bold;
+            display: inline-block;"
+        >
+          Reset Password
+        </a>
+      </div>
+      <p>This link will expire in 5 minutes. If you did not request this, please ignore this email. Your account remains secure.</p>
+      <p>Thank you,<br>Le Chat Team</p>
           <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
            <p style="font-size: 12px; color: #888; text-align: center;">If you need any assistance, feel free to <a href="mailto:vermadheeraj945@gmail.com" style="color: #007BFF;">contact us</a>.</p>     </div>
       `,

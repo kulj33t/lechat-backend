@@ -13,6 +13,14 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+transporter.verify((error, success) => {
+  if (error) {
+    console.log("Error connecting to mail server:", error);
+  } else {
+    console.log("Server is ready to take messages:", success);
+  }
+});
+
 export const signup = async (req, res) => {
   const { fullName, email, password } = req.body;
   const username = req.body.username.trim();
@@ -95,7 +103,13 @@ const mailOptions = {
 };
 
     generateToken(newUser._id, res);
-    // await transporter.sendMail(mailOptions);
+    transporter.sendMail(mailOptions)
+  .then(info => {
+    console.log("Mail Sent:", info.response);
+  })
+  .catch(error => {
+    console.error("Email Error:", error);
+  });
     return res.status(201).json({
       status: "success",
       message: "Successfully created user account",
@@ -176,7 +190,13 @@ const mailOptions = {
 
 
     generateToken(user._id, res);
-    // await transporter.sendMail(mailOptions);
+    transporter.sendMail(mailOptions)
+  .then(info => {
+    console.log("Mail Sent:", info.response);
+  })
+  .catch(error => {
+    console.error("Email Error:", error);
+  });
 
     return res.status(200).json({
       status: "success",
@@ -367,7 +387,13 @@ export const sendResetMail = async (req, res) => {
       `,
     };
 
-    // await transporter.sendMail(mailOptions);
+     transporter.sendMail(mailOptions)
+  .then(info => {
+    console.log("Mail Sent:", info.response);
+  })
+  .catch(error => {
+    console.error("Email Error:", error);
+  });
     user.resetPasswordToken = token;
     user.resetPasswordExpires = Date.now() + 300000;
     await user.save();

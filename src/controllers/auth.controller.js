@@ -95,7 +95,7 @@ const mailOptions = {
 };
 
     generateToken(newUser._id, res);
-    await transporter.sendMail(mailOptions);
+    // await transporter.sendMail(mailOptions);
     return res.status(201).json({
       status: "success",
       message: "Successfully created user account",
@@ -176,7 +176,7 @@ const mailOptions = {
 
 
     generateToken(user._id, res);
-    await transporter.sendMail(mailOptions);
+    // await transporter.sendMail(mailOptions);
 
     return res.status(200).json({
       status: "success",
@@ -367,7 +367,7 @@ export const sendResetMail = async (req, res) => {
       `,
     };
 
-    await transporter.sendMail(mailOptions);
+    // await transporter.sendMail(mailOptions);
     user.resetPasswordToken = token;
     user.resetPasswordExpires = Date.now() + 300000;
     await user.save();

@@ -1,51 +1,48 @@
-import mongoose, { mongo } from "mongoose";
+import mongoose from "mongoose";
 import Group from "../models/group.asign.model.js";
 import User from "../models/user.model.js";
 import GroupRequest from "../models/group.request.model.js";
+import UserRequest from "../models/user.request.model.js";
 import { getReceiverSocketId, io } from "../lib/socket.js";
+import { includesId, sameId } from "../lib/id.js";
 
 export const sendInviteByAdmin = async (req, res) => {
   try {
     const { userId: receiverId, groupId } = req.body;
     const senderId = req.user._id;
 
-    if (!mongoose.isValidObjectId(groupId)) {
+    if (!mongoose.isValidObjectId(groupId) || !mongoose.isValidObjectId(receiverId)) {
       return res
         .status(400)
-        .json({ status: "error", message: "Invalid group id" });
-    }
-
-    const existingRequest = await GroupRequest.findOne({
-      groupId,
-      $or: [{ senderId }, { receiverId }],
-    });
-    if (existingRequest) {
-      return res.status(400).json({
-        status: "error",
-        message: "Request for this group already exists",
-      });
+        .json({ status: "error", message: "Invalid group or user id" });
     }
 
     const group = await Group.findById(groupId);
-    const receiver = await User.findById(receiverId);
-
-    if (!receiver) {
-      return res
-        .status(400)
-        .json({ status: "error", message: "User not found to send invite" });
-    }
-
     if (!group) {
       return res
-        .status(400)
+        .status(404)
         .json({ status: "error", message: "Group not found to invite user" });
     }
 
-    if (group.admin.toString() !== senderId.toString()) {
+    if (!sameId(group.admin, senderId)) {
       return res.status(401).json({
         status: "error",
         message: "Only admin can send invite to users",
       });
+    }
+
+    if (sameId(senderId, receiverId)) {
+      return res.status(400).json({
+        status: "error",
+        message: "You cannot invite yourself",
+      });
+    }
+
+    const receiver = await User.findById(receiverId);
+    if (!receiver) {
+      return res
+        .status(404)
+        .json({ status: "error", message: "User not found to send invite" });
     }
 
     if (group.visibility !== "private" && receiver.privacy !== true) {
@@ -56,10 +53,39 @@ export const sendInviteByAdmin = async (req, res) => {
       });
     }
 
-    if (group.members.includes(receiverId)) {
+    if (includesId(group.members, receiverId)) {
       return res.status(400).json({
         status: "error",
         message: "Cannot send invite to members of group",
+      });
+    }
+
+    const isConnection = await UserRequest.exists({
+      status: "accepted",
+      $or: [
+        { senderId, receiverId },
+        { senderId: receiverId, receiverId: senderId },
+      ],
+    });
+    if (!isConnection) {
+      return res.status(403).json({
+        status: "error",
+        message: "You can only invite a connection",
+      });
+    }
+
+    const existingRequest = await GroupRequest.findOne({
+      groupId,
+      status: "pending",
+      $or: [
+        { senderId, receiverId },
+        { senderId: receiverId, receiverId: groupId },
+      ],
+    });
+    if (existingRequest) {
+      return res.status(400).json({
+        status: "error",
+        message: "A request for this group is already pending",
       });
     }
 
@@ -111,6 +137,7 @@ export const sendInviteByUser = async (req, res) => {
 
     const existingRequest = await GroupRequest.findOne({
       groupId,
+      status: "pending",
       $or: [{ senderId: user._id }, { receiverId: user._id }],
     });
     if (existingRequest) {
@@ -128,7 +155,7 @@ export const sendInviteByUser = async (req, res) => {
       });
     }
 
-    if (group.members.includes(user._id)) {
+    if (includesId(group.members, user._id)) {
       return res
         .status(400)
         .json({ status: "error", message: "Already a member" });
@@ -148,6 +175,18 @@ export const sendInviteByUser = async (req, res) => {
       groupId,
     });
     await newRequest.save();
+
+    const requester = await User.findById(user._id).select("fullName profilePic");
+    const adminSocketId = getReceiverSocketId(String(group.admin));
+    if (adminSocketId) {
+      io.to(adminSocketId).emit("newGroupAdminRequest", {
+        _id: newRequest._id,
+        senderId: requester,
+        receiverId: group._id,
+        groupId: group._id,
+        status: "pending",
+      });
+    }
 
     return res.status(200).json({
       status: "success",
@@ -214,7 +253,7 @@ export const getGroupRequestsForAdmin = async (req, res) => {
         message: "Public groups will not have any requests",
       });
     }
-    if (group.admin.toString() !== user._id.toString()) {
+    if (!sameId(group.admin, user._id)) {
       return res.status(401).json({
         status: "error",
         message: "Only admins can get the request of the users",
@@ -262,6 +301,12 @@ export const reviewInviteByAdmin = async (req, res) => {
         message: "Invalid status for revewing request",
       });
     }
+    if (!mongoose.isValidObjectId(groupId)) {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid group id",
+      });
+    }
     const request = await GroupRequest.findById(reqId).populate(
       "senderId",
       "groups"
@@ -272,7 +317,7 @@ export const reviewInviteByAdmin = async (req, res) => {
         message: "Request not found",
       });
     }
-    if (request.status === "accepted" || request.status === "rejected") {
+    if (request.status !== "pending") {
       return res.status(400).json({
         status: "error",
         message: "Request already reviewed",
@@ -289,35 +334,79 @@ export const reviewInviteByAdmin = async (req, res) => {
         message: "Group not found",
       });
     }
-    if (request.receiverId.toString() !== groupId) {
+    if (!sameId(request.groupId, groupId) || !sameId(request.receiverId, groupId)) {
       return res.status(400).json({
         status: "error",
         message: "Incorrect request or group id ",
       });
     }
-    if (user._id.toString() !== group.admin.toString()) {
+    if (!sameId(user._id, group.admin)) {
       return res.status(401).json({
         status: "error",
         message: "Only admins can review the requests",
       });
     }
-    request.status = status;
+    if (!request.senderId?._id) {
+      await GroupRequest.findByIdAndDelete(request._id);
+      return res.status(404).json({
+        status: "error",
+        message: "Request sender no longer exists",
+      });
+    }
     const newMember = await User.findById(request.senderId._id).select(
       "groups fullName profilePic"
     );
-
-    if (status === "accepted") {
-      group.members = [...group.members, request.senderId._id];
-      newMember.groups = [...newMember.groups, groupId];
+    if (!newMember) {
+      return res.status(404).json({
+        status: "error",
+        message: "Request sender no longer exists",
+      });
     }
+
     if (status === "rejected") {
       await GroupRequest.findByIdAndDelete(request._id);
+      return res.status(200).json({
+        status: "success",
+        message: "Request rejected successfully",
+      });
     }
 
-    await group.populate("members", "fullName profilePic");
+    if (status === "accepted") {
+      if (includesId(group.members, newMember._id)) {
+        await GroupRequest.deleteMany({
+          groupId,
+          status: "pending",
+          $or: [
+            { senderId: newMember._id },
+            { receiverId: newMember._id },
+          ],
+        });
+        await group.populate("members", "fullName profilePic");
+        return res.status(200).json({
+          status: "success",
+          message: "User is already a member of this group",
+          data: group,
+        });
+      }
+      group.members = [...group.members, newMember._id];
+      if (!Array.isArray(newMember.groups)) newMember.groups = [];
+      if (!includesId(newMember.groups, groupId)) newMember.groups.push(groupId);
+      request.status = "accepted";
+    }
+
     await newMember.save();
-    await request.save();
     await group.save();
+    await request.save();
+    await GroupRequest.deleteMany({
+      _id: { $ne: request._id },
+      groupId,
+      status: "pending",
+      $or: [
+        { senderId: newMember._id },
+        { receiverId: newMember._id },
+      ],
+    });
+    await group.populate("members", "fullName profilePic");
 
     if (status === "accepted") {
       const recieverSocketId = getReceiverSocketId(newMember._id);
@@ -374,24 +463,47 @@ export const reviewInviteByUser = async (req, res) => {
       });
     }
     const group = await Group.findById(groupId);
-    if (group.members.includes(user._id)) {
-      return res.status(400).json({
-        status: "error",
-        message: "Already a member of group",
-      });
-    }
-
     const request = await GroupRequest.findById(reqId);
     if (!request) {
-      return res.status(400).json({
+      return res.status(404).json({
         status: "error",
         message: "No request recieved for this groupId",
       });
     }
-    if (request.receiverId.toString() !== user._id.toString()) {
-      return res.status(400).json({
+    if (!group) {
+      return res.status(404).json({
         status: "error",
-        message: "Only reciever can review the requests",
+        message: "Group not found",
+      });
+    }
+    if (request.status !== "pending") {
+      return res.status(409).json({
+        status: "error",
+        message: "Request has already been reviewed",
+      });
+    }
+    if (
+      !sameId(request.receiverId, user._id) ||
+      !sameId(request.groupId, groupId) ||
+      !sameId(request.senderId, group.admin)
+    ) {
+      return res.status(403).json({
+        status: "error",
+        message: "This invitation does not belong to this user or group",
+      });
+    }
+
+    if (includesId(group.members, user._id)) {
+      await GroupRequest.deleteMany({
+        groupId,
+        status: "pending",
+        $or: [{ senderId: user._id }, { receiverId: user._id }],
+      });
+      await group.populate("members", "fullName profilePic");
+      return res.status(200).json({
+        status: "success",
+        message: "User is already a member of this group",
+        data: group,
       });
     }
 
@@ -405,14 +517,27 @@ export const reviewInviteByUser = async (req, res) => {
     }
     
     if (status === "accepted") {
-      group.members = [...group.members, user._id];
-      user.groups = user.groups ? [...user.groups, groupId] : [groupId];
+      group.members.push(user._id);
+      if (!Array.isArray(user.groups)) user.groups = [];
+      if (!includesId(user.groups, groupId)) user.groups.push(group._id);
       request.status = "accepted";
       await user.save();
       await group.save();
       await request.save();
+      await GroupRequest.deleteMany({
+        _id: { $ne: request._id },
+        groupId,
+        status: "pending",
+        $or: [
+          { senderId: user._id },
+          { receiverId: user._id },
+        ],
+      });
+      await group.populate("members", "fullName profilePic");
+      const userSocketId = getReceiverSocketId(user._id);
+      if (userSocketId) io.to(userSocketId).emit("newGroup", group);
       for (const member of group.members) {
-        const memberSocketId = getReceiverSocketId(member._id);
+        const memberSocketId = getReceiverSocketId(String(member?._id ?? member));
         const newUser = {
           _id: user._id,
           fullName: user.fullName,
@@ -425,7 +550,7 @@ export const reviewInviteByUser = async (req, res) => {
       return res.status(200).json({
         status: "success",
         message: "Request accepted successfully",
-        data: user,
+        data: group,
       });
     }
   } catch (error) {

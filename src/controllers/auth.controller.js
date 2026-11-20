@@ -8,6 +8,7 @@ import bcrypt from "bcryptjs";
 import validator from "validator";
 import cloudinary from "../lib/cloudinary.js";
 import nodemailer from "nodemailer";
+import jwt from "jsonwebtoken";
 
 const transporter = nodemailer.createTransport({
   service: "gmail",
@@ -273,6 +274,22 @@ export const userAuth = (req, res) => {
     return res.status(500).json({
       status: "error",
       message: "Internal server error",
+    });
+  }
+};
+
+export const createSocketToken = (req, res) => {
+  try {
+    const token = jwt.sign(
+      { userId: req.user._id.toString(), scope: "socket" },
+      process.env.JWT_KEY,
+      { expiresIn: "7d", audience: "lechat-socket" }
+    );
+    return res.status(200).json({ status: "success", token });
+  } catch {
+    return res.status(500).json({
+      status: "error",
+      message: "Unable to initialize realtime connection",
     });
   }
 };

@@ -3,6 +3,7 @@ import Group from "../models/group.asign.model.js";
 import cloudinary from "../lib/cloudinary.js";
 import GroupChat from "../models/group.message.model.js";
 import { getReceiverSocketId, io } from "../lib/socket.js";
+import { includesId } from "../lib/id.js";
 
 export const sendMessage = async (req, res) => {
   try {
@@ -22,10 +23,16 @@ export const sendMessage = async (req, res) => {
         message: "Group does not exists",
       });
     }
-    if (!group.members.includes(req.user._id)) {
+    if (!includesId(group.members, req.user._id)) {
       return res.status(400).json({
         status: "error",
         message: "Cannot send messages in group without joining it",
+      });
+    }
+    if (!(typeof text === "string" && text.trim()) && !image) {
+      return res.status(400).json({
+        status: "error",
+        message: "A message or image is required",
       });
     }
     const senderId = req.user._id;
@@ -50,7 +57,7 @@ export const sendMessage = async (req, res) => {
     const groupMembers = group.members;
 
     groupMembers.forEach((memberId) => {
-      const socketId = getReceiverSocketId(memberId._id.toString());
+      const socketId = getReceiverSocketId(String(memberId?._id ?? memberId));
       if (socketId) {
         io.to(socketId).emit("newGroupMessage", data);
       }
@@ -102,19 +109,37 @@ export const updateGroupReadCount = async (req, res) => {
   const { groupId } = req.body;
 
   try {
-    const groupMessages = await GroupChat.find({
-      groupId,
-      senderId: { $ne: req.user._id },
-      isRead: { $nin: [req.user._id] },
-    });
-
-    for (const message of groupMessages) {
-      message.isRead.push(req.user._id);
-      await message.save();
+    if (!mongoose.isValidObjectId(groupId)) {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid group id",
+      });
     }
+    const group = await Group.findById(groupId).select("members");
+    if (!group) {
+      return res.status(404).json({
+        status: "error",
+        message: "Group not found",
+      });
+    }
+    if (!includesId(group.members, req.user._id)) {
+      return res.status(403).json({
+        status: "error",
+        message: "You are not a member of this group",
+      });
+    }
+
+    await GroupChat.updateMany(
+      {
+        groupId,
+        senderId: { $ne: req.user._id },
+        isRead: { $nin: [req.user._id] },
+      },
+      { $addToSet: { isRead: req.user._id } }
+    );
 
     res.status(200).send({ success: true });
   } catch (error) {
-    res.status(500).send({ success: false, message: error.message });
+    res.status(500).send({ success: false, message: "Internal server error" });
   }
 };

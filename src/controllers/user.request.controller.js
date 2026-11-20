@@ -2,11 +2,18 @@ import User from "../models/user.model.js";
 import UserRequest from "../models/user.request.model.js";
 import Message from "../models/message.model.js";
 import { getReceiverSocketId, io } from "../lib/socket.js";
+import mongoose from "mongoose";
 
 export const sendRequest = async (req, res) => {
   try {
     const currUser = req.user;
     const { userId } = req.body;
+    if (!mongoose.isValidObjectId(userId)) {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid user id",
+      });
+    }
     if (userId.toString() === currUser._id.toString()) {
       return res.status(400).json({
         status: "error",
@@ -99,6 +106,12 @@ export const reviewRequest = async (req, res) => {
   try {
     const { status } = req.params;
     const { reqId } = req.body;
+    if (!mongoose.isValidObjectId(reqId)) {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid request id",
+      });
+    }
     const validStatuses = ["accepted", "rejected"];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
@@ -115,6 +128,18 @@ export const reviewRequest = async (req, res) => {
       return res.status(404).json({
         status: "error",
         message: "Request not found with this id",
+      });
+    }
+    if (request.receiverId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        status: "error",
+        message: "Only the recipient can review this request",
+      });
+    }
+    if (request.status !== "pending") {
+      return res.status(409).json({
+        status: "error",
+        message: "Request has already been reviewed",
       });
     }
     request.status = status;
@@ -153,6 +178,12 @@ export const removeConnection = async (req, res) => {
   try {
     const { userId } = req.body;
     const currUserId = req.user._id;
+    if (!mongoose.isValidObjectId(userId) || userId.toString() === currUserId.toString()) {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid connection user id",
+      });
+    }
 
     const request = await UserRequest.findOneAndDelete({
       $or: [

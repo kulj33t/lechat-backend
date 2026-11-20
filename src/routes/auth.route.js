@@ -12,6 +12,7 @@ import {
   verifyMailTokenAndChangePass,
   validateUserName,
   updatePrivacy,
+  createSocketToken,
 } from "../controllers/auth.controller.js";
 
 router.post("/signup", signup);
@@ -23,6 +24,8 @@ router.post("/logout", logout);
 router.put("/update-profile", protectRoute, updateProfile);
 
 router.get("/check", protectRoute, userAuth);
+
+router.get("/socket-token", protectRoute, createSocketToken);
 
 router.patch("/update-password", protectRoute, updatePassword);
 

@@ -3,12 +3,20 @@ import Group from "../models/group.asign.model.js";
 import GroupChat from "../models/group.message.model.js";
 import User from "../models/user.model.js";
 import GroupRequest from "../models/group.request.model.js";
+import UserRequest from "../models/user.request.model.js";
 import mongoose from "mongoose";
 import { getReceiverSocketId, io } from "../lib/socket.js";
+import { includesId, sameId } from "../lib/id.js";
 
 export const createGroup = async (req, res) => {
   try {
-    const { name } = req.body;
+    const name = typeof req.body.name === "string" ? req.body.name.trim() : "";
+    if (!name || name.length > 15) {
+      return res.status(400).json({
+        status: "error",
+        message: "Group name must be between 1 and 15 characters",
+      });
+    }
     const admin = req.user;
     const members = req.user._id;
     const user = await User.findById(admin._id);
@@ -25,9 +33,9 @@ export const createGroup = async (req, res) => {
       admin: members,
     });
 
-    admin.groups = admin.groups
-      ? [...admin.groups, newGroup._id]
-      : [newGroup._id];
+    if (!includesId(admin.groups, newGroup._id)) {
+      admin.groups = [...(admin.groups || []), newGroup._id];
+    }
     await admin.save();
     await newGroup.save();
     const data = await newGroup.populate("members", "fullName profilePic");
@@ -50,6 +58,11 @@ export const addMember = async (req, res) => {
   try {
     const { userId: memberToAdd, groupId } = req.body;
 
+    if (!mongoose.isValidObjectId(memberToAdd)) {
+      return res
+        .status(400)
+        .json({ status: "error", message: "Invalid user id" });
+    }
     if (!mongoose.isValidObjectId(groupId)) {
       return res
         .status(400)
@@ -66,27 +79,22 @@ export const addMember = async (req, res) => {
         .json({ status: "error", message: "Group not found" });
     }
 
-    if (
-      group.admin.toString() !== req.user._id.toString() &&
-      group.visibility === "private"
-    ) {
+    const requesterIsAdmin = sameId(group.admin, req.user._id);
+    const requesterIsMember = includesId(group.members, req.user._id);
+    if (!requesterIsAdmin && (!requesterIsMember || group.visibility === "private")) {
       return res.status(403).json({
         status: "error",
-        message: "Only admins can add members to private groups",
+        message: "Only group members can add members, and only admins can add to private groups",
       });
     }
 
-    if (memberToAdd.toString() === req.user._id.toString()) {
+    if (sameId(memberToAdd, req.user._id)) {
       return res
         .status(400)
         .json({ status: "error", message: "Cannot add yourself to the group" });
     }
 
-    const isMember = group.members.some(
-      (member) => member._id.toString() === memberToAdd.toString()
-    );
-
-    if (isMember) {
+    if (includesId(group.members, memberToAdd)) {
       return res.status(400).json({
         status: "error",
         message: "Already a member fo group ",
@@ -96,7 +104,6 @@ export const addMember = async (req, res) => {
     const user = await User.findById(memberToAdd).select(
       "fullName profilePic privacy groups"
     );
-    console.log(user);
     if (!user) {
       return res
         .status(400)
@@ -109,7 +116,22 @@ export const addMember = async (req, res) => {
       });
     }
 
-    user.groups = user.groups ? [...user.groups, groupId] : [groupId];
+    const isConnection = await UserRequest.exists({
+      status: "accepted",
+      $or: [
+        { senderId: req.user._id, receiverId: memberToAdd },
+        { senderId: memberToAdd, receiverId: req.user._id },
+      ],
+    });
+    if (!isConnection) {
+      return res.status(403).json({
+        status: "error",
+        message: "You can only add a connection to this group",
+      });
+    }
+
+    if (!Array.isArray(user.groups)) user.groups = [];
+    if (!includesId(user.groups, groupId)) user.groups.push(groupId);
     await user.save();
 
     group.members.push(memberToAdd);
@@ -147,9 +169,10 @@ export const getGroups = async (req, res) => {
     const groupIds = req.user.groups;
 
     if (!Array.isArray(groupIds) || groupIds.length === 0) {
-      return res.status(400).json({
-        status: "error",
-        message: "No groups found",
+      return res.status(200).json({
+        status: "success",
+        message: "Groups fetched successfully",
+        data: [],
       });
     }
 
@@ -180,7 +203,13 @@ export const removeMember = async (req, res) => {
         message: "Invalid group id",
       });
     }
-    if (memberToRemove.toString() === req.user._id.toString()) {
+    if (!mongoose.isValidObjectId(memberToRemove)) {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid user id",
+      });
+    }
+    if (sameId(memberToRemove, req.user._id)) {
       return res.status(400).json({
         status: "error",
         message:
@@ -201,33 +230,29 @@ export const removeMember = async (req, res) => {
         message: "User not found to remove from group",
       });
     }
-    if (group.admin.toString() !== req.user._id.toString()) {
+    if (!sameId(group.admin, req.user._id)) {
       return res.status(400).json({
         status: "error",
         message: "only Admins can remove the members",
       });
     }
-    if (user.groups.length === 0) {
+    if (!Array.isArray(user.groups) || user.groups.length === 0) {
       return res.status(400).json({
         status: "error",
         message: "User is not joined in  group",
       });
     }
-    if (!group.members.includes(memberToRemove)) {
+    if (!includesId(group.members, memberToRemove)) {
       return res.status(400).json({
         status: "error",
         message: "User is not in the group, can't remove",
       });
     }
 
-    user.groups = user.groups.filter(
-      (group) => group._id.toString() !== groupId.toString()
-    );
-    group.members = group.members.filter(
-      (id) => id.toString() !== memberToRemove.toString()
-    );
+    user.groups = user.groups.filter((userGroup) => !sameId(userGroup, groupId));
+    group.members = group.members.filter((id) => !sameId(id, memberToRemove));
 
-    await GroupRequest.findOneAndDelete({
+    await GroupRequest.deleteMany({
       $or: [{ senderId: user._id }, { receiverId: user._id }],
       groupId,
     });
@@ -286,33 +311,29 @@ export const exitGroup = async (req, res) => {
 
     const user = req.user;
 
-    const isMember = group.members.some(
-      (member) => member._id.toString() === user._id.toString()
-    );
-    if (!user.groups.includes(groupId) && !isMember) {
+    const isMember = includesId(group.members, user._id);
+    if (!includesId(user.groups, groupId) && !isMember) {
       return res.status(400).json({
         status: "error",
         message: "You must be part of the group to leave it",
       });
     }
 
-    if (group.admin.toString() === user._id.toString()) {
+    if (sameId(group.admin, user._id)) {
       return res.status(400).json({
         status: "error",
         message: "Admins cannot leave the group. They must delete it.",
       });
     }
 
-    await GroupRequest.findOneAndDelete({
+    await GroupRequest.deleteMany({
       groupId,
       $or: [{ senderId: user._id }, { receiverId: user._id }],
     });
 
-    group.members = group.members.filter(
-      (member) => member._id.toString() !== user._id.toString()
-    );
-    user.groups = user.groups.filter(
-      (group) => group._id.toString() !== groupId
+    group.members = group.members.filter((member) => !sameId(member, user._id));
+    user.groups = (user.groups || []).filter(
+      (userGroup) => !sameId(userGroup, groupId)
     );
 
     await group.save();
@@ -359,13 +380,6 @@ export const joinGroup = async (req, res) => {
     }
 
     const user = req.user;
-    if (user.groups.includes(groupId)) {
-      return res.status(400).json({
-        status: "error",
-        message: "Already joined the group",
-      });
-    }
-
     const group = await Group.findById(groupId);
     if (!group) {
       return res.status(400).json({
@@ -374,46 +388,51 @@ export const joinGroup = async (req, res) => {
       });
     }
 
-    if (group.members.includes(user._id)) {
-      return res.status(400).json({
-        status: "error",
-        message: "Already joined the group",
-      });
-    }
-
     if (group.visibility === "private") {
       return res.status(400).json({
         status: "error",
-        message: "Group is private, cannot join without invite",
+        message: "Group is private, request an invite to join",
       });
     }
 
-    group.members.push(user._id);
-    user.groups.push(groupId);
+    const isNewMember = !includesId(group.members, user._id);
+    if (isNewMember) group.members.push(user._id);
+    if (!Array.isArray(user.groups)) user.groups = [];
+    if (!includesId(user.groups, group._id)) user.groups.push(group._id);
+
+    await GroupRequest.deleteMany({
+      groupId,
+      status: "pending",
+      $or: [
+        { senderId: user._id, receiverId: groupId },
+        { senderId: group.admin, receiverId: user._id },
+      ],
+    });
 
     await group.save();
     await user.save();
 
-    const userData = {fullName:user.fullName,profilePic:user.profilePic,_id:user._id}
-    const updatedUser = await user.populate({
-      path: "groups",
-      select: "name members photo",
-      populate: {
-        path: "members",
-        select: "fullName profilePic",
-      },
-    });
-    for (const member of group.members) {
-      const memberSocketId = getReceiverSocketId(member._id);
-      if (memberSocketId) {
-        io.to(memberSocketId).emit("newMember", { groupId, user:userData });
+    await group.populate("members", "fullName profilePic");
+    const userData = {
+      _id: user._id,
+      fullName: user.fullName,
+      profilePic: user.profilePic,
+    };
+    const userSocketId = getReceiverSocketId(user._id);
+    if (userSocketId) io.to(userSocketId).emit("newGroup", group);
+    if (isNewMember) {
+      for (const member of group.members) {
+        const memberSocketId = getReceiverSocketId(String(member?._id ?? member));
+        if (memberSocketId) {
+          io.to(memberSocketId).emit("newMember", { groupId, user: userData });
+        }
       }
     }
 
     return res.status(200).json({
       status: "success",
       message: "Group joined successfully",
-      data: updatedUser,
+      data: group,
     });
   } catch (error) {
     console.log("Error in joining group ->", error?.message);
@@ -447,25 +466,25 @@ export const deleteGroup = async (req, res) => {
       });
     }
 
-    if (group.admin.toString() !== req.user._id.toString()) {
+    if (!sameId(group.admin, req.user._id)) {
       return res.status(400).json({
         status: "error",
         message: "Only the admin can delete the group",
       });
     }
-
     for (const member of group.members) {
-      member.groups = member.groups.filter(
-        (group) => group.toString() !== groupId
+      member.groups = (member.groups || []).filter(
+        (memberGroupId) => !sameId(memberGroupId, groupId)
       );
       await member.save();
     }
 
     await GroupChat.deleteMany({ groupId });
+    await GroupRequest.deleteMany({ groupId });
     const groupMembers = group.members;
     await Group.findByIdAndDelete(groupId);
     for (const member of groupMembers) {
-      const memberSocketId = getReceiverSocketId(member._id);
+      const memberSocketId = getReceiverSocketId(String(member?._id ?? member));
       if (memberSocketId) {
         io.to(memberSocketId).emit("removedGroup", groupId);
       }
@@ -504,31 +523,59 @@ export const updateGroup = async (req, res) => {
         message: "Group not found",
       });
     }
-    if (group.admin.toString() !== req.user._id.toString()) {
+    if (!sameId(group.admin, req.user._id)) {
       return res.status(400).json({
         status: "error",
         message: "Only admin can edit the group info",
       });
     }
-    if (visibility) {
-      if (visibility === "private" || visibility === "public") {
-        group.visibility = visibility;
-      }
-    }
-    if (newName) {
-      group.name = newName;
-    }
-    if (description) {
-      group.description = description;
-    }
-
-    if (!newName && !description && !visibility) {
+    const wasPrivate = group.visibility === "private";
+    const hasName = Object.prototype.hasOwnProperty.call(req.body, "newName");
+    const hasDescription = Object.prototype.hasOwnProperty.call(req.body, "description");
+    const hasVisibility = Object.prototype.hasOwnProperty.call(req.body, "visibility");
+    if (!hasName && !hasDescription && !hasVisibility) {
       return res.status(400).json({
         status: "error",
-        message: "At least on feild is required",
+        message: "At least one group field is required",
       });
     }
+
+    if (hasName) {
+      if (typeof newName !== "string" || !newName.trim() || newName.trim().length > 15) {
+        return res.status(400).json({
+          status: "error",
+          message: "Group name must be between 1 and 15 characters",
+        });
+      }
+      group.name = newName.trim();
+    }
+    if (hasDescription) {
+      if (typeof description !== "string" || description.length > 200) {
+        return res.status(400).json({
+          status: "error",
+          message: "Group description must be 200 characters or fewer",
+        });
+      }
+      group.description = description.trim();
+    }
+    if (hasVisibility) {
+      if (!["private", "public"].includes(visibility)) {
+        return res.status(400).json({
+          status: "error",
+          message: "Visibility must be public or private",
+        });
+      }
+      group.visibility = visibility;
+    }
     await group.save();
+    if (wasPrivate && group.visibility === "public") {
+      await GroupRequest.deleteMany({
+        groupId,
+        status: "pending",
+        senderId: { $ne: group.admin },
+        receiverId: groupId,
+      });
+    }
     for (const member of group.members) {
       const memberSocketId = getReceiverSocketId(member._id);
       if (memberSocketId) {
@@ -569,7 +616,7 @@ export const updateDp = async (req, res) => {
         message: "Group not found",
       });
     }
-    if (group.admin.toString() !== req.user._id.toString()) {
+    if (!sameId(group.admin, req.user._id)) {
       return res.status(400).json({
         status: "error",
         message: "Only admin can edit the group info",
@@ -612,39 +659,17 @@ export const updateDp = async (req, res) => {
 
 export const getNewGroups = async (req, res) => {
   try {
-    const existingRequests = await GroupRequest.find({
-      senderId: req.user._id,
-    });
-
-    if (!existingRequests || existingRequests.length === 0) {
-      const groups = await Group.find({ _id: { $nin: req.user.groups } });
-      if (!groups) {
-        return res.status(404).json({
-          status: "error",
-          message: "No groups at the moment",
-        });
-      }
-      return res.status(200).json({
-        status: "success",
-        message: "Groups fetched successfully",
-        data: groups,
-      });
-    }
-
-    const avoidedGroups = existingRequests.map((request) => request.receiverId);
-    const newGroups = await Group.find({
-      $and: [
-        { _id: { $nin: avoidedGroups } },
-        { _id: { $nin: req.user.groups } },
-      ],
-    });
-
-    if (!newGroups) {
-      return res.status(404).json({
-        status: "error",
-        message: "New groups not avaialable right now ",
-      });
-    }
+    const pendingRequests = await GroupRequest.find({
+      status: "pending",
+      $or: [{ senderId: req.user._id }, { receiverId: req.user._id }],
+    }).select("groupId");
+    const groupsWhereMember = await Group.find({ members: req.user._id }).select("_id");
+    const hiddenGroupIds = [
+      ...(req.user.groups || []).map((group) => group._id || group),
+      ...groupsWhereMember.map((group) => group._id),
+      ...pendingRequests.map((request) => request.groupId),
+    ];
+    const newGroups = await Group.find({ _id: { $nin: hiddenGroupIds } });
     return res.status(200).json({
       status: "success",
       message: "Groups fetched successfully",
@@ -663,11 +688,24 @@ export const getConnectionsToAddGroup = async (req, res) => {
   try {
     const { groupId } = req.params;
     const { connections } = req.query;
-    const parsedConnections = JSON.parse(connections);
+    let parsedConnections;
+    try {
+      parsedConnections = JSON.parse(connections || "[]");
+    } catch {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid connections list",
+      });
+    }
     const user = req.user;
+    if (!Array.isArray(parsedConnections)) {
+      return res.status(400).json({
+        status: "error",
+        message: "Connections must be a list",
+      });
+    }
 
     if (!mongoose.isValidObjectId(groupId)) {
-      console.log(groupId);
       return res
         .status(400)
         .json({ status: "error", message: "Invalid group ID" });
@@ -680,7 +718,7 @@ export const getConnectionsToAddGroup = async (req, res) => {
         .json({ status: "error", message: "Group not found" });
     }
 
-    if (!group.members.includes(user._id)) {
+    if (!includesId(group.members, user._id)) {
       return res.status(401).json({
         status: "error",
         message: "Cannot add members without joining the group",
@@ -688,7 +726,7 @@ export const getConnectionsToAddGroup = async (req, res) => {
     }
 
     if (
-      group.admin.toString() !== user._id.toString() &&
+      !sameId(group.admin, user._id) &&
       group.visibility !== "public"
     ) {
       return res.status(401).json({
@@ -697,28 +735,60 @@ export const getConnectionsToAddGroup = async (req, res) => {
       });
     }
 
-    if (!parsedConnections || parsedConnections.length === 0) {
-      return res.status(400).json({
-        status: "error",
-        message: "No connections to add members to group",
+    const requestedIds = [
+      ...new Set(
+        parsedConnections
+          .map((connection) => connection?._id)
+          .filter((id) => mongoose.isValidObjectId(id))
+          .map(String)
+      ),
+    ];
+    if (requestedIds.length === 0) {
+      return res.status(200).json({
+        status: "success",
+        message: "No connections available to add",
+        data: [],
       });
     }
 
-    const validConnections = [];
-    for (const connection of parsedConnections) {
-      if (!group.members.includes(connection._id)) {
-        const user = await User.findById(connection._id);
-        if (user) {
-          const existingRequest = await GroupRequest.findOne({
-            $or: [{ senderId: user._id }, { receiverId: user._id }],
-            groupId: group._id,
-          });
-          if (!existingRequest) {
-            validConnections.push(connection);
-          }
-        }
-      }
-    }
+    const acceptedRequests = await UserRequest.find({
+      status: "accepted",
+      $or: [
+        { senderId: user._id, receiverId: { $in: requestedIds } },
+        { receiverId: user._id, senderId: { $in: requestedIds } },
+      ],
+    }).select("senderId receiverId");
+    const acceptedIds = new Set(
+      acceptedRequests.map((request) =>
+        sameId(request.senderId, user._id)
+          ? String(request.receiverId)
+          : String(request.senderId)
+      )
+    );
+    const pendingRequests = await GroupRequest.find({
+      groupId: group._id,
+      status: "pending",
+      $or: [
+        { senderId: { $in: requestedIds } },
+        { receiverId: { $in: requestedIds } },
+      ],
+    }).select("senderId receiverId");
+    const pendingIds = new Set(
+      pendingRequests.map((request) =>
+        sameId(request.senderId, group.admin)
+          ? String(request.receiverId)
+          : String(request.senderId)
+      )
+    );
+    const candidates = await User.find({
+      _id: { $in: [...acceptedIds] },
+      privacy: { $ne: true },
+    }).select("fullName profilePic");
+    const validConnections = candidates.filter(
+      (connection) =>
+        !includesId(group.members, connection._id) &&
+        !pendingIds.has(String(connection._id))
+    );
 
     return res.status(200).json({
       status: "success",

@@ -4,6 +4,7 @@ import cloudinary from "../lib/cloudinary.js";
 import { getReceiverSocketId } from "../lib/socket.js";
 import { io } from "../lib/socket.js";
 import mongoose from "mongoose";
+import UserRequest from "../models/user.request.model.js";
 
 export const getAllMessages = async (req, res) => {
   try {
@@ -58,6 +59,25 @@ export const sendMessage = async (req, res) => {
         message: "Receiver id is invalid",
       });
     }
+    if (!(typeof text === "string" && text.trim()) && !image) {
+      return res.status(400).json({
+        status: "error",
+        message: "A message or image is required",
+      });
+    }
+    const isConnection = await UserRequest.exists({
+      status: "accepted",
+      $or: [
+        { senderId: req.user._id, receiverId },
+        { senderId: receiverId, receiverId: req.user._id },
+      ],
+    });
+    if (!isConnection) {
+      return res.status(403).json({
+        status: "error",
+        message: "You can only message a connection",
+      });
+    }
     const senderId = req.user._id;
     let imageUrl;
     if (image) {
@@ -96,34 +116,38 @@ export const sendMessage = async (req, res) => {
 export const updateUnreadCount = async (req, res) => {
   try {
     const { userId } = req.body;
+    if (!mongoose.isValidObjectId(userId) || req.user._id.equals(userId)) {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid conversation user",
+      });
+    }
+    const isConnection = await UserRequest.exists({
+      status: "accepted",
+      $or: [
+        { senderId: req.user._id, receiverId: userId },
+        { senderId: userId, receiverId: req.user._id },
+      ],
+    });
+    if (!isConnection) {
+      return res.status(403).json({
+        status: "error",
+        message: "Conversation is not available",
+      });
+    }
+
+    await Message.updateMany(
+      { senderId: userId, receiverId: req.user._id, isRead: false },
+      { $set: { isRead: true } }
+    );
 
     const receiverSocketId = getReceiverSocketId(userId);
     if (receiverSocketId) {
-      io.to(receiverSocketId).emit("updateRead");
-    }
-
-    const messages = await Message.find({
-      $or: [
-        { senderId: userId, receiverId: req.user._id },
-        { senderId: req.user._id, receiverId: userId },
-      ],
-    });
-
-    const messageIdsToUpdate = messages
-      .filter(
-        (message) => message.senderId.toString() !== req.user._id.toString()
-      )
-      .map((message) => message._id);
-
-    if (messageIdsToUpdate.length > 0) {
-      await Message.updateMany(
-        { _id: { $in: messageIdsToUpdate } },
-        { $set: { isRead: true } }
-      );
+      io.to(receiverSocketId).emit("updateRead", { userId: req.user._id });
     }
 
     res.status(200).send({ success: true });
   } catch (error) {
-    res.status(500).send({ success: false, message: error.message });
+    res.status(500).send({ success: false, message: "Internal server error" });
   }
 };

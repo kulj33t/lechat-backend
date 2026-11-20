@@ -4,7 +4,7 @@ import { randomBytes } from "crypto";
 const sessionCookieOptions = () => ({
   httpOnly: true,
   secure: process.env.NODE_ENV !== "development",
-  sameSite: "lax",
+  sameSite: process.env.NODE_ENV === "development" ? "lax" : "none",
   path: "/",
 });
 

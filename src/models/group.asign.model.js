@@ -5,6 +5,9 @@ const groupSchema = mongoose.Schema(
     name: {
       type: String,
       required: true,
+      trim: true,
+      minlength: 1,
+      maxlength: 15,
     },
     description: {
       type: String,
@@ -26,7 +29,7 @@ const groupSchema = mongoose.Schema(
     admin: {
       type: mongoose.Schema.Types.ObjectId,
       required: true,
-      ref: "Users",
+      ref: "User",
     },
     visibility: {
       type: String,

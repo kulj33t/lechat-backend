@@ -1,6 +1,13 @@
 import jwt from "jsonwebtoken";
 import { randomBytes } from "crypto";
 
+const sessionCookieOptions = () => ({
+  httpOnly: true,
+  secure: process.env.NODE_ENV !== "development",
+  sameSite: "lax",
+  path: "/",
+});
+
 export const generateMailToken = async () => {
   return randomBytes(20).toString("hex");
 };
@@ -12,8 +19,11 @@ export const generateToken = (userId, res) => {
 
   res.cookie("jwt", token, {
     maxAge: 7 * 24 * 60 * 60 * 1000,
-    sameSite: "None",
-    secure: true,
+    ...sessionCookieOptions(),
   });
   return token;
+};
+
+export const clearSessionCookie = (res) => {
+  res.clearCookie("jwt", sessionCookieOptions());
 };

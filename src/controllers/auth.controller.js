@@ -1,4 +1,8 @@
-import { generateMailToken, generateToken } from "../lib/utils.js";
+import {
+  clearSessionCookie,
+  generateMailToken,
+  generateToken,
+} from "../lib/utils.js";
 import User from "../models/user.model.js";
 import bcrypt from "bcryptjs";
 import validator from "validator";
@@ -31,6 +35,12 @@ export const signup = async (req, res) => {
         .status(400)
         .json({ status: "error", message: "All fields are required" });
     }
+    if (typeof password !== "string" || password.length < 8) {
+      return res.status(400).json({
+        status: "error",
+        message: "Password must be at least 8 characters",
+      });
+    }
     if (username.length > 18) {
       return res.status(400).json({
         status: "error",
@@ -48,13 +58,6 @@ export const signup = async (req, res) => {
       return res.status(400).json({
         status: "error",
         message: "Enter a valid email",
-      });
-    }
-
-    if (!validator.isStrongPassword(password)) {
-      return res.status(400).json({
-        status: "error",
-        message: "Please enter a strong password",
       });
     }
 
@@ -213,11 +216,7 @@ const mailOptions = {
 
 export const logout = (req, res) => {
   try {
-        res.cookie("jwt", null, {
-        expires: new Date(Date.now()),
-        sameSite:"None",
-        secure:true,
-    });
+    clearSessionCookie(res);
 
     return res
       .status(200)
@@ -287,19 +286,18 @@ export const updatePassword = async (req, res) => {
         message: "Both existing and new password fields are required",
       });
     }
+    if (typeof newPass !== "string" || newPass.length < 8) {
+      return res.status(400).json({
+        status: "error",
+        message: "Password must be at least 8 characters",
+      });
+    }
     const user = req.user;
     const passMatch = await bcrypt.compare(currPass, user.password);
     if (!passMatch) {
       return res.status(400).json({
         status: "error",
         message: "Wrong existing password",
-      });
-    }
-
-    if (!validator.isStrongPassword(newPass)) {
-      return res.status(400).json({
-        status: "error",
-        message: "Enter a strong new password",
       });
     }
 
@@ -433,7 +431,6 @@ export const verifyMailTokenAndChangePass = async (req, res) => {
         message: "Invalid token",
       });
     }
-
     if (Date.now() >= user.resetPasswordExpires) {
       user.resetPasswordToken = null;
       user.resetPasswordExpires = null;
@@ -443,10 +440,16 @@ export const verifyMailTokenAndChangePass = async (req, res) => {
         message: "Link expired",
       });
     }
-    if (!validator.isStrongPassword(newPass)) {
+    if (!newPass) {
       return res.status(400).json({
         status: "error",
-        message: "Enter a strong new password",
+        message: "Password is required",
+      });
+    }
+    if (typeof newPass !== "string" || newPass.length < 8) {
+      return res.status(400).json({
+        status: "error",
+        message: "Password must be at least 8 characters",
       });
     }
 

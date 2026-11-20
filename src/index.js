@@ -1,20 +1,12 @@
+import "dotenv/config";
 import express from "express";
-import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import { connectDB } from "./lib/db.js";
 import cors from "cors";
+import { corsOptions } from "./lib/cors.js";
 import { app,server } from "./lib/socket.js";
 import {authRoutes,messageRoutes,groupChatRoutes,groupRoutes,groupReqRoutes,userReqRoutes} from "./routes/index.js"
 
-
-dotenv.config();
-
-const corsOptions = {
-  origin: ["http://localhost:5173", "https://lechat-public.vercel.app"],
-  credentials: true,
-  methods: ["GET", "POST","PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-};
 
 app.use(cors(corsOptions));
 

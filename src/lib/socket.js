@@ -3,15 +3,13 @@ import http from "http";
 import express from "express";
 import Message from "../models/message.model.js";
 import GroupChat from "../models/group.message.model.js";
+import { socketCorsOptions } from "./cors.js";
 
 const app = express();
 const server = http.createServer(app);
 
 const io = new Server(server, {
-  cors: {
-    origin: ["http://localhost:5173","https://lechat-public.vercel.app"],
-    credentials: true,
-  },
+  cors: socketCorsOptions,
 });
 
 export function getReceiverSocketId(userId) {
